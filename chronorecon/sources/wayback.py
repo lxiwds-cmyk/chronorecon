@@ -145,7 +145,27 @@ class WaybackSource(BaseSource):
                 pages + 1,
                 " (resume key)" if resume_key else "",
             )
-            text = self._fetch(ctx, params)
+            try:
+                text = self._fetch(
+                    ctx,
+                    params,
+                    attempts=1 if "collapse" in params else 2,
+                    timeout=60 if "collapse" in params else 90,
+                )
+            except SourceUnavailable as exc:
+                # Collapsed domain queries are much more likely to hit the
+                # CDX gateway timeout.  On the first page, retry without
+                # collapsing; the database still deduplicates URLs, and the
+                # downloader can choose the newest capture.
+                if "collapse" not in params or pages or resume_key:
+                    raise
+                ctx.log.warning(
+                    "wayback: collapsed query failed (%s); retrying without collapse",
+                    exc,
+                )
+                base.pop("collapse", None)
+                params.pop("collapse", None)
+                text = self._fetch(ctx, params, attempts=2, timeout=90)
             records, next_key = parse_cdx_json(text)
             pages += 1
             for record in records:
@@ -186,14 +206,20 @@ class WaybackSource(BaseSource):
             time.sleep(1.5)
         ctx.log.info("wayback: %s capture rows from %s page(s)", emitted, pages)
 
-    def _fetch(self, ctx: SourceContext, params: dict) -> str:
+    def _fetch(
+        self,
+        ctx: SourceContext,
+        params: dict,
+        attempts: int = 2,
+        timeout: int = 90,
+    ) -> str:
         last_error = "unknown error"
-        attempts = 2
+        attempts = max(1, int(attempts))
         # CDX requests can legitimately take a minute on the public server.
         # Use a no-retry session and manually bound the number of attempts so
         # a heavily loaded archive cannot hold up the whole run for many
         # minutes through nested automatic retries.
-        request_timeout = max(ctx.settings.timeout, 90)
+        request_timeout = max(ctx.settings.timeout, int(timeout))
         for attempt in range(attempts):
             try:
                 response = ctx.http.get(

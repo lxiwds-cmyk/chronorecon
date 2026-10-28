@@ -1,9 +1,12 @@
 import json
+import logging
+from types import SimpleNamespace
 
 import pytest
 
-from chronorecon.sources.base import SourceError
-from chronorecon.sources.wayback import parse_cdx_json
+from chronorecon.config import Settings
+from chronorecon.sources.base import SourceError, SourceUnavailable
+from chronorecon.sources.wayback import WaybackSource, parse_cdx_json
 
 
 def test_parse_cdx_with_header():
@@ -45,3 +48,49 @@ def test_parse_cdx_rejects_html():
 
 def test_parse_cdx_handles_empty():
     assert parse_cdx_json("[]") == ([], None)
+
+
+def test_wayback_retries_without_collapse(monkeypatch, tmp_path):
+    source = WaybackSource()
+    calls = []
+    payload = json.dumps(
+        [
+            ["timestamp", "original", "statuscode", "mimetype", "digest", "length"],
+            [
+                "20200101000000",
+                "https://example.com/a",
+                "200",
+                "text/html",
+                "digest",
+                "1",
+            ],
+        ]
+    )
+
+    def fake_fetch(ctx, params, attempts=2, timeout=90):
+        calls.append((dict(params), attempts, timeout))
+        if params.get("collapse"):
+            raise SourceUnavailable("HTTP 504")
+        return payload
+
+    monkeypatch.setattr(source, "_fetch", fake_fetch)
+    settings = Settings(
+        domains=["example.com"],
+        output_root=tmp_path,
+        url_sources=["wayback"],
+        passive_sources=[],
+        download=False,
+    )
+    ctx = SimpleNamespace(
+        domain="example.com",
+        settings=settings,
+        log=logging.getLogger("test.wayback"),
+    )
+    hits = list(source.collect(ctx))
+
+    assert len(hits) == 1
+    assert hits[0].url == "https://example.com/a"
+    assert calls[0][0]["collapse"] == "urlkey"
+    assert calls[0][1:] == (1, 60)
+    assert "collapse" not in calls[1][0]
+    assert calls[1][1:] == (2, 90)
