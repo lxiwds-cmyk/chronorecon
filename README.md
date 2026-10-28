@@ -57,7 +57,7 @@ and response-body recovery. VirusTotal requires `VT_API_KEY`; OTX passive DNS re
 Requirements: **Python 3.9+** and normal internet access.
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/chronorecon.git
+git clone https://github.com/lxiwds-cmyk/chronorecon.git
 cd chronorecon
 
 python3 -m venv .venv
@@ -260,11 +260,9 @@ git branch -M main
 gh repo create chronorecon --public --source=. --remote=origin --push
 
 # or create the repository in the web UI, then:
-git remote add origin https://github.com/YOUR_GITHUB_USERNAME/chronorecon.git
+git remote add origin https://github.com/lxiwds-cmyk/chronorecon.git
 git push -u origin main
 ```
-
-Remember to replace `YOUR_GITHUB_USERNAME` in this README's clone example after publishing.
 
 ## License
 
