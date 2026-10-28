@@ -31,6 +31,9 @@ jobs:
       - name: Compile
         run: python -m compileall -q chronorecon
 
+      - name: Lint
+        run: ruff check chronorecon tests
+
       - name: Run tests
         run: pytest -q
 
